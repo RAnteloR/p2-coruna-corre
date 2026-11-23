@@ -8,6 +8,7 @@ Todos los notebooks y módulos importan las rutas desde aquí, para no escribirl
 from __future__ import annotations
 
 import os
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,6 +23,11 @@ DIR_CLEAN = DIR_DATOS / "clean"        # CSV finales pseudonimizados (no se sube
 DIR_EXTERNOS = DIR_DATOS / "externos"  # ficheros propios o de otras fuentes
 DIR_OUTPUT = RAIZ / "output"           # entregas por destinatario
 DIR_DOCS = RAIZ / "docs"
+
+# Fecha de corte fija: el análisis usa las 6 carreras disputadas antes de Novo Mesoiro
+# (22/11/2026). Se excluye toda carrera con fecha >= FECHA_CORTE, así el resultado no
+# cambia según el día en que se ejecute.
+FECHA_CORTE = date(2026, 11, 22)
 
 load_dotenv(RAIZ / ".env")
 
