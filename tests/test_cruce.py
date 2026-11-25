@@ -46,6 +46,42 @@ def test_clasificar_cruce_separa_los_cuatro_grupos():
     assert list(resultado["inscrito_circuito"]) == [True, True, False, False]
 
 
+def test_clasificar_cruce_detecta_homonimo_en_misma_carrera():
+    carrera = pd.DataFrame(
+        [
+            # Otra persona con el mismo nombre y dorsal distinto -> debe salir homonimo (False)
+            {"nome": "Maria Jose", "apelidos": "Nunez Perez", "dorsal": "7777"},
+            # La persona inscrita real con su dorsal oficial -> ambos (True)
+            {"nome": "María José", "apelidos": "Núñez Pérez", "dorsal": "1001"},
+            # Carlos no sale en 'ambos', asi que sigue siendo solo_nombre (True)
+            {"nome": "Carlos", "apelidos": "Gómez López", "dorsal": "9999"},
+        ]
+    )
+
+    resultado = clasificar_cruce(carrera, _tabla_inscritos_ejemplo())
+
+    assert list(resultado["tipo_cruce"]) == ["homonimo", "ambos", "solo_nombre"]
+    assert list(resultado["inscrito_circuito"]) == [False, True, True]
+
+
+def test_clasificar_cruce_no_pierde_ni_duplica_filas():
+    # Aunque haya duplicados en inscritos (mismo nombre o mismo dorsal), la carrera conserva sus filas exactas
+    inscritos_con_duplicados = pd.DataFrame(
+        [
+            {"nome": "MARIA-JOSE", "apelidos": "NUNEZ PEREZ", "dorsal": "1001"},
+            {"nome": "MARIA-JOSE", "apelidos": "NUNEZ PEREZ", "dorsal": "2001"},
+            {"nome": "OTRA", "apelidos": "PERSONA", "dorsal": "1001"},
+        ]
+    )
+    carrera = _tabla_carrera_ejemplo()
+
+    clasificada = clasificar_cruce(carrera, inscritos_con_duplicados)
+    marcada = marcar_inscritos(carrera, inscritos_con_duplicados)
+
+    assert len(clasificada) == len(carrera)
+    assert len(marcada) == len(carrera)
+
+
 def test_clasificar_cruce_modo_estricto_solo_ambos():
     resultado = clasificar_cruce(
         _tabla_carrera_ejemplo(),
@@ -102,17 +138,20 @@ def test_clasificar_cruce_avisa_si_inscritos_vacio_y_falla_si_faltan_columnas():
         clasificar_cruce(carrera_mal, _tabla_inscritos_ejemplo())
 
 
-def test_buscar_archivos_carreras_prefiere_tablas_limpias(tmp_path):
+def test_buscar_archivos_carreras_prefiere_tablas_limpias_sin_saltar_otras(tmp_path):
     (tmp_path / "inscritos.csv").write_text("nome,apelidos,dorsal\n", encoding="utf-8")
     (tmp_path / "carrera_01.csv").write_text("nome,apelidos,dorsal\n", encoding="utf-8")
     (tmp_path / "carrera_02.csv").write_text("nome,apelidos,dorsal\n", encoding="utf-8")
 
-    # Sin archivos limpios, devuelve los base de carrera
+    # Sin archivos limpios, devuelve los base de cada carrera
     assert [r.name for r in buscar_archivos_carreras(tmp_path)] == ["carrera_01.csv", "carrera_02.csv"]
 
-    # Si ya existen las tablas limpias de Persona B, las elige primero
+    # Si solo existe la version limpia de carrera_01, usa esa y mantiene el base de carrera_02
     (tmp_path / "carrera_01_limpia.csv").write_text("nome,apelidos,dorsal\n", encoding="utf-8")
-    assert [r.name for r in buscar_archivos_carreras(tmp_path)] == ["carrera_01_limpia.csv"]
+    assert [r.name for r in buscar_archivos_carreras(tmp_path)] == [
+        "carrera_01_limpia.csv",
+        "carrera_02.csv",
+    ]
 
 
 def test_ejecutar_cruce_carreras_genera_resumen_json(tmp_path):
@@ -137,6 +176,7 @@ def test_ejecutar_cruce_carreras_genera_resumen_json(tmp_path):
     assert datos_json["carreras_analizadas"] == 1
     assert datos_json["totales"]["ambos"] == 1
     assert datos_json["totales"]["solo_nombre"] == 1
+    assert datos_json["totales"]["homonimo"] == 0
     assert datos_json["totales"]["solo_dorsal"] == 1
     assert datos_json["totales"]["ninguno"] == 1
     assert datos_json["totales"]["inscritos_true"] == 2

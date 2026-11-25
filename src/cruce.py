@@ -2,7 +2,7 @@
 
 Usa las mismas funciones de normalizacion de nombres de src/ligazon.py para marcar
 en cada carrera quien esta inscrito en el circuito (columna inscrito_circuito) y
-sacar un diagnostico de los 4 grupos posibles sin mostrar nombres ni dorsales.
+sacar un diagnostico de los grupos posibles sin mostrar nombres ni dorsales.
 """
 
 from __future__ import annotations
@@ -50,17 +50,25 @@ def _comprobar_columnas(tabla: pd.DataFrame, nombre_tabla: str) -> None:
 
 
 def buscar_archivos_carreras(carpeta_interim: Path = DIR_INTERIM) -> list[Path]:
-    """Busca los CSV de carreras en interim/. Si ya existen los limpios de Persona B, usa esos."""
-    archivos_limpios = sorted(carpeta_interim.glob("carrera_*_limpia.csv"))
-    if archivos_limpios:
-        return archivos_limpios
+    """Busca los CSV de carreras en interim/.
 
-    # Si todavia no se generaron los limpios, cogemos los CSV base de carreras
-    return [
-        ruta
-        for ruta in sorted(carpeta_interim.glob("carrera_*.csv"))
-        if not ruta.name.endswith("_limpia.csv") and not ruta.name.endswith("_cruce.csv")
-    ]
+    Para cada carrera elige su version limpia (carrera_XX_limpia.csv) si existe,
+    y si no existe usa el CSV base (carrera_XX.csv) para no saltarse ninguna.
+    """
+    por_carrera: dict[str, Path] = {}
+
+    for ruta in sorted(carpeta_interim.glob("carrera_*.csv")):
+        if ruta.name.endswith("_cruce.csv"):
+            continue
+
+        es_limpia = ruta.name.endswith("_limpia.csv")
+        carrera_id = ruta.stem.replace("_limpia", "")
+
+        # Guardamos el archivo si aun no teniamos esa carrera, o si este es su version limpia
+        if carrera_id not in por_carrera or es_limpia:
+            por_carrera[carrera_id] = ruta
+
+    return [por_carrera[cid] for cid in sorted(por_carrera)]
 
 
 def clasificar_cruce(
@@ -68,11 +76,13 @@ def clasificar_cruce(
     tabla_inscritos: pd.DataFrame,
     incluir_solo_nombre: bool = True,
 ) -> pd.DataFrame:
-    """Clasifica cada fila de una carrera en 4 grupos y anade la columna inscrito_circuito.
+    """Clasifica cada fila de una carrera en 5 grupos y anade la columna inscrito_circuito.
 
     Grupos en 'tipo_cruce':
     - ambos: coincide el nombre normalizado y el dorsal del circuito.
-    - solo_nombre: coincide el nombre normalizado, pero el dorsal es distinto.
+    - solo_nombre: coincide el nombre normalizado con otro dorsal, y ese nombre no salio en 'ambos'.
+    - homonimo: coincide el nombre normalizado con otro dorsal, pero esa persona ya salio en 'ambos'
+      en la misma carrera (es otra persona con el mismo nombre -> se marca False).
     - solo_dorsal: coincide el dorsal, pero el nombre no (se marca False).
     - ninguno: no coincide ni nombre ni dorsal (se marca False).
     """
@@ -104,19 +114,32 @@ def clasificar_cruce(
         if nombre_norm != "" and dorsal_limpio != "":
             pares_inscritos.add((nombre_norm, dorsal_limpio))
 
-    tipos_cruce: list[str] = []
-    marcas_inscrito: list[bool] = []
+    # Pasada 1: preparamos (nombre_norm, dorsal_limpio) de cada fila y anotamos que nombres salen en 'ambos'
+    datos_filas: list[tuple[str, str]] = []
+    nombres_en_ambos: set[str] = set()
 
     for fila in tabla_carrera.itertuples(index=False):
         nombre_norm = normalizar_nombre(
             nombre_completo(_limpiar_texto(fila.nome), _limpiar_texto(fila.apelidos))
         )
         dorsal_limpio = _limpiar_dorsal(fila.dorsal)
+        datos_filas.append((nombre_norm, dorsal_limpio))
 
+        if nombre_norm != "" and dorsal_limpio != "" and (nombre_norm, dorsal_limpio) in pares_inscritos:
+            nombres_en_ambos.add(nombre_norm)
+
+    # Pasada 2: clasificamos cada fila teniendo en cuenta los homonimos dentro de la misma carrera
+    tipos_cruce: list[str] = []
+    marcas_inscrito: list[bool] = []
+
+    for nombre_norm, dorsal_limpio in datos_filas:
         if nombre_norm != "" and dorsal_limpio != "" and (nombre_norm, dorsal_limpio) in pares_inscritos:
             tipo = "ambos"
         elif nombre_norm != "" and nombre_norm in nombres_inscritos:
-            tipo = "solo_nombre"
+            if nombre_norm in nombres_en_ambos:
+                tipo = "homonimo"
+            else:
+                tipo = "solo_nombre"
         elif dorsal_limpio != "" and dorsal_limpio in dorsales_inscritos:
             tipo = "solo_dorsal"
         else:
@@ -130,6 +153,11 @@ def clasificar_cruce(
     resultado = tabla_carrera.copy()
     resultado["tipo_cruce"] = tipos_cruce
     resultado["inscrito_circuito"] = marcas_inscrito
+
+    # Comprobamos expresamente que no se pierde ni se duplica ninguna fila en el cruce
+    assert len(resultado) == len(tabla_carrera), (
+        f"El cruce cambio el numero de filas: antes {len(tabla_carrera)}, despues {len(resultado)}"
+    )
     return resultado
 
 
@@ -154,6 +182,7 @@ def resumir_cruce_carrera(tabla_clasificada: pd.DataFrame, carrera_id: str) -> d
 
     ambos = int(conteos.get("ambos", 0))
     solo_nombre = int(conteos.get("solo_nombre", 0))
+    homonimo = int(conteos.get("homonimo", 0))
     solo_dorsal = int(conteos.get("solo_dorsal", 0))
     ninguno = int(conteos.get("ninguno", 0))
     inscritos_true = int(tabla_clasificada["inscrito_circuito"].sum())
@@ -165,6 +194,7 @@ def resumir_cruce_carrera(tabla_clasificada: pd.DataFrame, carrera_id: str) -> d
         "total": total,
         "ambos": ambos,
         "solo_nombre": solo_nombre,
+        "homonimo": homonimo,
         "solo_dorsal": solo_dorsal,
         "ninguno": ninguno,
         "inscritos_true": inscritos_true,
@@ -207,6 +237,7 @@ def ejecutar_cruce_carreras(
         "total": int(tabla_resumen["total"].sum()) if len(tabla_resumen) else 0,
         "ambos": int(tabla_resumen["ambos"].sum()) if len(tabla_resumen) else 0,
         "solo_nombre": int(tabla_resumen["solo_nombre"].sum()) if len(tabla_resumen) else 0,
+        "homonimo": int(tabla_resumen["homonimo"].sum()) if len(tabla_resumen) else 0,
         "solo_dorsal": int(tabla_resumen["solo_dorsal"].sum()) if len(tabla_resumen) else 0,
         "ninguno": int(tabla_resumen["ninguno"].sum()) if len(tabla_resumen) else 0,
         "inscritos_true": int(tabla_resumen["inscritos_true"].sum()) if len(tabla_resumen) else 0,
