@@ -70,6 +70,16 @@ def test_sin_absoluta_devuelve_none():
     assert c.parsear_url_absoluta(html, BASE) is None
 
 
+def test_varias_absolutas_avisa_y_devuelve_la_primera():
+    html = b"""<ul>
+      <li><a href="/gl/web/resultado/competicion-99">ABSOLUTA</a></li>
+      <li><a href="/gl/web/resultado/competicion-98">Absoluta (2008 e anteriores)</a></li>
+    </ul>"""
+    with pytest.warns(UserWarning, match="2 enlaces"):
+        url = c.parsear_url_absoluta(html, BASE)
+    assert url == BASE + "/gl/web/resultado/competicion-99"
+
+
 def test_fecha_de_la_ficha():
     assert c.parsear_fecha_evento(fixture("ficha_disputada.html")) == date(2026, 3, 14)
     assert c.parsear_fecha_evento(fixture("ficha_futura.html")) == date(2026, 11, 22)
@@ -118,6 +128,7 @@ def test_descubrir_carreras_excluye_la_ultima():
     assert tabla["carrera_id"].iloc[0] == "carrera_01"
     assert (tabla["url_absoluta"] == BASE + "/gl/web/resultado/competicion-17059").all()
     assert [e[0] for e in tabla.attrs["excluidas"]] == [3216]
+    assert tabla.attrs["avisos"] == []
     # Se partió de la portada y se siguieron los enlaces
     assert pedidas[:3] == [c.URL_RESULTADOS, URL_EDICION, URL_EVENTOS]
 
@@ -131,6 +142,25 @@ def test_descubrir_excluye_por_fecha_aunque_tenga_enlace_de_resultados():
 
     assert 3216 not in set(tabla["evento_id"])
     assert tabla.attrs["excluidas"][0][3] == "aún no se ha corrido"
+
+
+def test_descubrir_no_se_corta_si_hay_varias_absolutas():
+    obtener_base, _ = _web_falsa()
+    extra = b'<a href="/gl/web/resultado/competicion-17060">ABSOLUTA BIS</a></body>'
+
+    def obtener(url: str) -> bytes:
+        html = obtener_base(url)
+        if "/resultado/evento-3210" in url:
+            return html.replace(b"</body>", extra)
+        return html
+
+    tabla = c.descubrir_carreras(hoy=date(2026, 11, 17), obtener=obtener, verbose=False)
+
+    # La carrera sigue en la tabla con la primera Absoluta y el problema queda registrado
+    assert list(tabla["evento_id"]) == [3210, 3211, 3212, 3213, 3214, 3215]
+    assert tabla["url_absoluta"].iloc[0] == BASE + "/gl/web/resultado/competicion-17059"
+    assert len(tabla.attrs["avisos"]) == 1
+    assert tabla.attrs["avisos"][0].startswith("evento 3210")
 
 
 # --------------------------------------------------------------------------------------

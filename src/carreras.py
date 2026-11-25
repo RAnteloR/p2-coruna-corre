@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+import warnings
 from datetime import date
 from pathlib import Path
 from typing import Callable
@@ -146,6 +147,9 @@ def parsear_url_absoluta(html: bytes, url: str) -> str | None:
 
     Se busca por el TEXTO del enlace (empieza por «ABSOLUTA»), no por su posición ni por el
     número de competición, que cambian de una carrera a otra. Devuelve None si no hay.
+
+    Si hay más de un enlace «Absoluta» no se corta la ejecución: se avisa con
+    warnings.warn (para revisarlo a mano) y se devuelve el primero.
     """
     candidatas = [
         urljoin(url, href)
@@ -154,7 +158,11 @@ def parsear_url_absoluta(html: bytes, url: str) -> str | None:
     ]
     candidatas = list(dict.fromkeys(candidatas))  # sin repetidos, manteniendo el orden
     if len(candidatas) > 1:
-        raise ValueError(f"Hay {len(candidatas)} enlaces «Absoluta» en {url}; revisar a mano.")
+        warnings.warn(
+            f"Hay {len(candidatas)} enlaces «Absoluta» en {url}; se usa el primero (revisar a mano).",
+            UserWarning,
+            stacklevel=2,
+        )
     return candidatas[0] if candidatas else None
 
 
@@ -201,6 +209,9 @@ def descubrir_carreras(
       * su página de resultados no tiene categoría Absoluta.
 
     Columnas: carrera_id, orden, fecha, url_absoluta, evento_id, nombre.
+
+    Los avisos menores (p. ej. varias categorías Absoluta en una carrera) no cortan la
+    ejecución: se guardan en tabla.attrs["avisos"] y se imprimen si verbose=True.
     """
     hoy = hoy or date.today()
 
@@ -217,7 +228,7 @@ def descubrir_carreras(
 
     candidatos = list(con_resultados) + [i for i in del_menu if i not in con_resultados]
 
-    filas, excluidas = [], []
+    filas, excluidas, avisos = [], [], []
     for evento_id in candidatos:
         url_ficha = (
             del_menu[evento_id]["url_ficha"] if evento_id in del_menu
@@ -238,7 +249,10 @@ def descubrir_carreras(
             continue
 
         url_res = con_resultados[evento_id]["url_resultados"]
-        url_absoluta = parsear_url_absoluta(obtener(url_res), url_res)
+        with warnings.catch_warnings(record=True) as capturados:
+            warnings.simplefilter("always")
+            url_absoluta = parsear_url_absoluta(obtener(url_res), url_res)
+        avisos.extend(f"evento {evento_id} ({nombre}): {w.message}" for w in capturados)
         if url_absoluta is None:
             excluidas.append((evento_id, nombre, fecha, "sin categoría Absoluta"))
             continue
@@ -257,7 +271,10 @@ def descubrir_carreras(
         print(f"Carreras disputadas: {len(tabla)} · excluidas: {len(excluidas)}")
         for evento_id, nombre, fecha, motivo in excluidas:
             print(f"  - excluida evento {evento_id} ({nombre}, {fecha}): {motivo}")
+        for aviso in avisos:
+            print(f"  ! aviso {aviso}")
     tabla.attrs["excluidas"] = excluidas
+    tabla.attrs["avisos"] = avisos
     return tabla
 
 
