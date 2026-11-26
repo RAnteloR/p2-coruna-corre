@@ -5,6 +5,7 @@ y pasan los tiempos a segundos. Si un valor no tiene el formato esperado,
 devuelven None para poder contarlo luego en el informe de calidad.
 """
 
+import pandas as pd
 import math
 import re
 
@@ -47,11 +48,11 @@ def tiempo_a_segundos(texto):
 
 def marcar_tiempo(segundos, distancia_m=None):
     """Devuelve 'ok', 'faltante' o 'imposible'. No borra nada, solo marca.
-
     Si se pasa la distancia de la carrera, el mínimo es 2:30 min/km por la distancia.
     Si no se sabe (None o NaN), se usa el mínimo general de 12 min.
     """
-    if segundos is None:
+    # pandas convierte los None en NaN al usar .map() sobre una columna
+    if segundos is None or (isinstance(segundos, float) and math.isnan(segundos)):
         return "faltante"
     if distancia_m is None or (isinstance(distancia_m, float) and math.isnan(distancia_m)):
         minimo = TIEMPO_MIN_S
@@ -80,3 +81,30 @@ def parsear_posto_categoria(texto):
     if not m:
         return (None, None, None)
     return (m.group(1), m.group(2), int(m.group(3)))
+
+
+def limpiar_carrera(df, carrera_id, distancia_m=None):
+    """Pasa la tabla cruda de interim/ a la tabla limpia de docs/contrato_datos.md.
+
+    No borra ninguna fila: los valores raros se marcan o quedan vacíos.
+    """
+    sexo = df["posto_sexo"].map(parsear_posto_sexo)
+    cat = df["posto_categoria"].map(parsear_posto_categoria)
+    segundos = df["tempo"].map(tiempo_a_segundos)
+    # Filas sin categoría ni sexo: vienen como "NO-1", "NO-2"... con posto_sexo "—"
+    sin_categoria = df["posto_categoria"].str.fullmatch(r"NO-\d+")
+
+    return pd.DataFrame({
+        "carrera_id": carrera_id,
+        "orden": int(carrera_id.split("_")[1]),        # carrera_03 -> 3
+        "dorsal": df["dorsal"],
+        "nome": df["nome"],
+        "apelidos": df["apelidos"],
+        "posto": df["posto"].astype(int),
+        "sexo": sexo.map(lambda t: t[0]),
+        "posto_sexo": sexo.map(lambda t: t[1]).astype("Int64"),       # Int64 admite vacíos
+        "categoria": cat.map(lambda t: t[0]).mask(sin_categoria, "SIN_CATEGORIA"),
+        "posto_categoria": cat.map(lambda t: t[2]).astype("Int64"),
+        "tempo_s": segundos.astype("Int64"),
+        "tempo_marca": segundos.map(lambda s: marcar_tiempo(s, distancia_m)),
+    })

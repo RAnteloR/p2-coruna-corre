@@ -1,0 +1,7 @@
+carrera_id,filas,vacios,posto_no_numerico,posto_sexo_mal_formato,posto_categoria_mal_formato,categoria_NO,categoria_ESP,categoria_desconocida,sexo_no_coincide,tempo_mal_formato,tempo_faltante,tempo_imposible,posto_repetido,dorsal_repetido,filas_duplicadas
+carrera_01,1489,0,0,0,0,3,1,0,0,0,0,0,0,0,0
+carrera_02,929,0,0,0,0,6,0,0,0,0,0,0,0,0,0
+carrera_03,795,0,0,0,0,5,0,0,0,0,0,0,0,0,0
+carrera_04,875,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+carrera_05,659,0,0,0,0,3,1,0,0,0,0,3,0,0,0
+carrera_06,643,0,0,0,0,0,1,0,0,0,0,0,0,0,0

@@ -1,11 +1,13 @@
-"""Tests de las funciones de limpieza (issue #4). Datos inventados, sin nombres."""
+"""Tests de las funciones de limpieza (issues #4 y #9). Datos inventados, sin nombres."""
 
 from src.limpieza import (
     tiempo_a_segundos,
     marcar_tiempo,
     parsear_posto_sexo,
     parsear_posto_categoria,
+    limpiar_carrera,
 )
+import pandas as pd
 
 
 # --- Tiempos ------
@@ -95,3 +97,49 @@ def test_minimo_segun_distancia():
 def test_sin_distancia_usa_12_min():
     assert marcar_tiempo(13 * 60) == "ok"
     assert marcar_tiempo(13 * 60, distancia_m=float("nan")) == "ok"   # Volta a Oza: sin distancia
+
+def test_nan_es_faltante():
+    # pandas convierte los None en NaN al usar .map() sobre una columna
+    assert marcar_tiempo(float("nan")) == "faltante"
+
+
+
+# --- Limpiar una carrera entera --------------------------------------------
+
+def _carrera_inventada():
+    return pd.DataFrame({
+        "posto": ["1", "2", "3"],
+        "dorsal": ["101", "102", "103"],
+        "nome": ["ANA", "LUIS", "EVA"],
+        "apelidos": ["PEREZ", "GOMEZ", "RUIZ"],
+        "posto_sexo": ["F-1", "M-1", "—"],
+        "posto_categoria": ["SNRF-1", "MS1M-1", "NO-1"],
+        "tempo": ["00:25:00", "00:26:30", "10:28:43"],
+    })
+
+
+def test_limpiar_carrera_columnas_del_contrato():
+    limpia = limpiar_carrera(_carrera_inventada(), "carrera_03", distancia_m=6395)
+    assert list(limpia.columns) == [
+        "carrera_id", "orden", "dorsal", "nome", "apelidos", "posto", "sexo",
+        "posto_sexo", "categoria", "posto_categoria", "tempo_s", "tempo_marca",
+    ]
+    assert len(limpia) == 3                      # no se pierde ninguna fila
+    assert (limpia["orden"] == 3).all()
+
+
+def test_limpiar_carrera_separa_y_convierte():
+    limpia = limpiar_carrera(_carrera_inventada(), "carrera_03", distancia_m=6395)
+    assert limpia.loc[0, "sexo"] == "F"
+    assert limpia.loc[0, "categoria"] == "SNR"
+    assert limpia.loc[1, "posto_categoria"] == 1
+    assert limpia.loc[0, "tempo_s"] == 1500
+    assert limpia.loc[0, "tempo_marca"] == "ok"
+
+
+def test_limpiar_carrera_fila_sin_categoria():
+    limpia = limpiar_carrera(_carrera_inventada(), "carrera_03", distancia_m=6395)
+    assert limpia.loc[2, "categoria"] == "SIN_CATEGORIA"
+    assert pd.isna(limpia.loc[2, "sexo"])
+    assert pd.isna(limpia.loc[2, "posto_categoria"])
+    assert limpia.loc[2, "tempo_marca"] == "imposible"     # más de 10 h

@@ -1,11 +1,11 @@
 codigo_carrera,codigo_circuito,categoria,nacidos_desde,nacidos_ata,edad_min,edad_max,nota
-SUB20,?,Sub 20,2007,2008,,,código pendiente de confirmar
+SUB20,?,Sub 20,2007,2008,,,código confirmado en los datos (72 filas)
 SUB23,?,Sub 23,2004,2006,,,
 SNR,SN,Sénior,,2003,,34,edad el 14/03/2026
 MS1,M1,Máster 1,,,35,44,edad el 14/03/2026
 MS2,M2,Máster 2,,,45,54,edad el 14/03/2026
-MS3,M3,Máster 3,,,55,64,edad el 14/03/2026; código deducido
+MS3,M3,Máster 3,,,55,64,edad el 14/03/2026; código confirmado en los datos
 MS4,M4,Máster 4,,,65,,edad el 14/03/2026
-?,?,Discapacidade,,2008,,,código pendiente: no aparece en las páginas revisadas; confirmar con datos reales (#9). Modalidades: cadeira de rodas / visual / intelectual
+?,?,Discapacidade,,2008,,,no aparece en los datos de 2026. Modalidades: cadeira de rodas / visual / intelectual
 ESP,?,Especial,,,,,3 filas en los datos (ESPM/ESPF); significado por confirmar
-NO,?,Sin categoría,,,,,17 filas en los datos; en la tabla limpia pasa a SIN_CATEGORIA
+NO,?,Sin categoría,,,,,17 filas en los datos; vienen como NO-1 / NO-2... con posto_sexo — ; en la tabla limpia pasa a SIN_CATEGORIA
